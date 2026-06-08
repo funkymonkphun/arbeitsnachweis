@@ -49,13 +49,13 @@ jobs:
       - name: APP bauen
         run: pyinstaller --windowed --name "Arbeitsnachweis" arbeitsnachweis.py
 
- #     - name: APP zippen
- #       run: cd dist && zip -r Arbeitsnachweis-mac.zip Arbeitsnachweis.app
+      - name: APP zippen
+        run: cd dist && zip -r Arbeitsnachweis-mac.zip Arbeitsnachweis.app
 
       - uses: actions/upload-artifact@v4
         with:
           name: macos-app
-          path: dist/Arbeitsnachweis.app
+          path: dist/Arbeitsnachweis-mac.zip
 
   # ── Release erstellen (wartet bis beide Builds fertig sind) ────────────────
   release:
@@ -81,4 +81,4 @@ jobs:
           name: "Arbeitsnachweis v${{ github.event.inputs.version }}"
           files: |
             release-files/Arbeitsnachweis.exe
-            release-files/Arbeitsnachweis.app
+            release-files/Arbeitsnachweis-mac.zip
