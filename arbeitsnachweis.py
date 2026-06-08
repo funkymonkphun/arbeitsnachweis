@@ -79,7 +79,7 @@ class TimeTrackingLogic:
     def lade_mitarbeiter():
         if not os.path.exists(MITARBEITER_FILE):
             # Erstelle eine Standard-Datei, wenn sie fehlt
-            standard = {"Mauricio Dussin": {"wochenstunden": "30", "arbeitstage": "6"}}
+            standard = {"Mitarbeiter 1": {"wochenstunden": "39", "arbeitstage": "6"}}
             with open(MITARBEITER_FILE, "w", encoding="utf-8") as f:
                 json.dump(standard, f, ensure_ascii=False, indent=4)
             return standard
