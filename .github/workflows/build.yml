@@ -1,0 +1,32 @@
+name: Build Windows EXE
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:   # auch manuell auslösbar
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Python einrichten
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Abhängigkeiten installieren
+        run: |
+          pip install pyinstaller customtkinter reportlab holidays
+
+      - name: EXE bauen
+        run: |
+          pyinstaller --onefile --windowed --name "Arbeitsnachweis" arbeitsnachweis.py
+
+      - name: EXE als Artefakt hochladen
+        uses: actions/upload-artifact@v4
+        with:
+          name: Arbeitsnachweis-Windows
+          path: dist/Arbeitsnachweis.exe
