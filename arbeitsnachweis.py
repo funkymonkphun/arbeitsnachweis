@@ -79,7 +79,7 @@ class TimeTrackingLogic:
     def lade_mitarbeiter():
         if not os.path.exists(MITARBEITER_FILE):
             # Erstelle eine Standard-Datei, wenn sie fehlt
-            standard = {"Mitarbeiter 1": {"wochenstunden": "39", "arbeitstage": "6"}}
+            standard = {"Mauricio Dussin": {"wochenstunden": "30", "arbeitstage": "6"}}
             with open(MITARBEITER_FILE, "w", encoding="utf-8") as f:
                 json.dump(standard, f, ensure_ascii=False, indent=4)
             return standard
@@ -121,7 +121,7 @@ class TimeTrackingLogic:
         return f"{wert:.2f}".replace(".", ",")
 
     @staticmethod
-    def generiere_pdf(filepath, name, monat, jahr, tage_daten):
+    def generiere_pdf(filepath, name, monat, jahr, tage_daten, uestd_farbe="#000000"):
         doc = SimpleDocTemplate(filepath, pagesize=letter, rightMargin=30, leftMargin=30, topMargin=30, bottomMargin=30)
         story = []
 
@@ -188,6 +188,8 @@ class TimeTrackingLogic:
             ('GRID', (0,0), (-1,-1), 0.5, colors.grey),
             ('FONTNAME', (0,-1), (-1,-1), 'Helvetica-Bold'),
             ('BACKGROUND', (0,-1), (-1,-1), colors.whitesmoke),
+            # Ü.Std-Spalte (Index 7): gewählte Farbe für alle Daten- und Summenzeilen
+            ('TEXTCOLOR', (7, 1), (7, -1), colors.HexColor(uestd_farbe)),
         ]))
         story.append(t)
         story.append(Spacer(1, 30))
@@ -253,6 +255,14 @@ class TimeTrackingApp(ctk.CTk):
         
         self.tage_speicher = {}
         self.comboboxen_speicher = {}
+
+        # PDF-Farbe für Ü.Std aus Konfiguration laden (Standard: schwarz)
+        self.pdf_uestd_farbe = "#000000"
+        try:
+            with open(_CONFIG_FILE, "r", encoding="utf-8") as f:
+                self.pdf_uestd_farbe = json.load(f).get("pdf_uestd_farbe", "#000000")
+        except Exception:
+            pass
 
         self.setup_ui()
         
@@ -430,6 +440,10 @@ class TimeTrackingApp(ctk.CTk):
 
         self.btn_raster = ctk.CTkButton(z1, text="Zeitraster: 30 Min", command=self.toggle_zeit_raster, fg_color="#64748b", hover_color="#475569")
         self.btn_raster.pack(side="right", padx=5)
+
+        ctk.CTkButton(z1, text="🎨 Ü.Std-Farbe (PDF)", command=self.aendere_pdf_uestd_farbe,
+                      fg_color="#64748b", hover_color="#475569", width=160)  \
+            .pack(side="right", padx=5)
 
         export_btn = ctk.CTkButton(z1, text="PDF Exportieren...", command=self.export_pdf, fg_color="green", hover_color="darkgreen")
         export_btn.pack(side="right", padx=5)
@@ -617,7 +631,8 @@ class TimeTrackingApp(ctk.CTk):
             ctk.CTkEntry(row, textvariable=d["a"], width=40, justify="center").pack(side="left", padx=3)
             ctk.CTkEntry(row, textvariable=d["h"], width=40, justify="center").pack(side="left", padx=3)
 
-            ent_ueber = ctk.CTkEntry(row, textvariable=d["u_std"], width=60, justify="center", state="disabled", fg_color=("#e2e8f0", "#1e293b"))
+            ent_ueber = ctk.CTkEntry(row, textvariable=d["u_std"], width=60, justify="center",
+                                     state="disabled", fg_color=("#e2e8f0", "#1e293b"))
             ent_ueber.pack(side="left", padx=3)
             
             ctk.CTkEntry(row, textvariable=d["bemerkung"], width=180).pack(side="left", padx=3)
@@ -718,6 +733,26 @@ class TimeTrackingApp(ctk.CTk):
         self.lbl_summen.configure(
             text=f"Gesamtsummen | Std.ges: {sum_ges:.2f}  |  D.Plan: {sum_plan:.2f}  |  Ü.Std: {sum_ueber:.2f}".replace(".", ",")
         )
+
+    def aendere_pdf_uestd_farbe(self):
+        """Öffnet einen Farbwähler für die Ü.Std-Spalte in der exportierten PDF."""
+        from tkinter import colorchooser
+        farbe = colorchooser.askcolor(color=self.pdf_uestd_farbe, title="PDF-Farbe für Ü.Std wählen")
+        if not (farbe and farbe[1]):
+            return
+        self.pdf_uestd_farbe = farbe[1]
+        try:
+            cfg = {}
+            if os.path.exists(_CONFIG_FILE):
+                with open(_CONFIG_FILE, "r", encoding="utf-8") as f:
+                    cfg = json.load(f)
+            cfg["pdf_uestd_farbe"] = self.pdf_uestd_farbe
+            with open(_CONFIG_FILE, "w", encoding="utf-8") as f:
+                json.dump(cfg, f, ensure_ascii=False, indent=4)
+        except Exception as e:
+            print(f"Farbe konnte nicht gespeichert werden: {e}")
+        messagebox.showinfo("Farbe gespeichert",
+                            f"Ü.Std-Farbe in der PDF wurde gesetzt auf: {self.pdf_uestd_farbe}")
 
     def aendere_datenpfad(self):
         """Öffnet einen Ordner-Dialog, um den Datenspeicherort zu ändern."""
@@ -827,7 +862,8 @@ class TimeTrackingApp(ctk.CTk):
                 name=self.name_var.get(),
                 monat=self.monat_var.get(),
                 jahr=self.jahr_var.get(),
-                tage_daten=monats_daten
+                tage_daten=monats_daten,
+                uestd_farbe=self.pdf_uestd_farbe
             )
             messagebox.showinfo("Erfolg", "PDF wurde erfolgreich exportiert!")
         except Exception as e:
