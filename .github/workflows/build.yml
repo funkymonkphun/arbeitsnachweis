@@ -23,7 +23,7 @@ jobs:
           python-version: "3.11"
 
       - name: Abhängigkeiten installieren
-        run: pip install pyinstaller customtkinter reportlab holidays
+        run: pip install pyinstaller customtkinter reportlab holidays pdfplumber
 
       - name: EXE bauen
         run: pyinstaller --onefile --windowed --name "Arbeitsnachweis" arbeitsnachweis.py
@@ -44,7 +44,7 @@ jobs:
           python-version: "3.11"
 
       - name: Abhängigkeiten installieren
-        run: pip install pyinstaller customtkinter reportlab holidays
+        run: pip install pyinstaller customtkinter reportlab holidays pdfplumber
 
       - name: APP bauen
         run: pyinstaller --windowed --name "Arbeitsnachweis" arbeitsnachweis.py
