@@ -1,6 +1,6 @@
 # Arbeitsnachweis Tonabteilung
 
-Ein Desktop-Programm zur Erfassung und Verwaltung von Arbeitszeiten mit PDF-Export. Verfügbar als `.app` (macOS) und `.exe` (Windows).
+Ein Desktop-Programm zur Erfassung und Verwaltung von Arbeitszeiten mit PDF-Export und automatischem Dienstplan-Import. Verfügbar als `.app` (macOS) und `.exe` (Windows).
 
 ---
 
@@ -14,14 +14,15 @@ Ein Desktop-Programm zur Erfassung und Verwaltung von Arbeitszeiten mit PDF-Expo
 6. [Urlaub eintragen](#urlaub-eintragen)
 7. [Feiertagserkennung](#feiertagserkennung)
 8. [Zeitraster umschalten](#zeitraster-umschalten)
-9. [Monat wechseln](#monat-wechseln)
-10. [Speichern & Laden](#speichern--laden)
-11. [Monat leeren](#monat-leeren)
-12. [PDF exportieren](#pdf-exportieren)
-13. [Ü.Std-Farbe in der PDF](#überstunden-farbe-in-der-pdf)
-14. [Datenpfad ändern](#datenpfad-ändern)
-15. [Dark & Light Mode](#dark--light-mode)
-16. [Datenspeicherung](#datenspeicherung)
+9. [Dienstplan importieren](#dienstplan-importieren)
+10. [Monat wechseln](#monat-wechseln)
+11. [Speichern & Laden](#speichern--laden)
+12. [Monat leeren](#monat-leeren)
+13. [PDF exportieren](#pdf-exportieren)
+14. [Ü.Std-Farbe in der PDF](#überstunden-farbe-in-der-pdf)
+15. [Datenpfad ändern](#datenpfad-ändern)
+16. [Dark & Light Mode](#dark--light-mode)
+17. [Datenspeicherung](#datenspeicherung)
 
 ---
 
@@ -33,7 +34,7 @@ Einfach die `.app`-Datei (macOS) bzw. `.exe`-Datei (Windows) starten – keine I
 **Als Python-Skript**
 Voraussetzungen installieren und starten:
 ```bash
-pip install customtkinter reportlab holidays
+pip install customtkinter reportlab holidays pdfplumber
 python arbeitsnachweis.py
 ```
 
@@ -43,7 +44,7 @@ python arbeitsnachweis.py
 
 Das Fenster ist in drei Bereiche gegliedert:
 
-**Obere Leiste (Zeile 1):** Mitarbeiterauswahl, Jahres- und Monatsauswahl sowie Schaltflächen für PDF-Export, Zeitraster und Ü.Std-Farbe.
+**Obere Leiste (Zeile 1):** Mitarbeiterauswahl, Jahres- und Monatsauswahl sowie Schaltflächen für Dienstplan-Import, Zeitraster, Ü.Std-Farbe und PDF-Export.
 
 **Obere Leiste (Zeile 2):** Wochenstunden, Arbeitstage, berechnetes Tages-Soll sowie Datenpfad-Anzeige und -Wechsel.
 
@@ -123,12 +124,34 @@ Das Programm erkennt automatisch **Feiertage in NRW** sowie **Sonntage**. Fällt
 
 ## Zeitraster umschalten
 
-Der Button **„Zeitraster: 30 Min"** (oben rechts) wechselt zwischen zwei Abstufungen für die Dropdown-Uhrzeitfelder:
+Der Button **„Zeitraster: 30 Min"** wechselt zwischen zwei Abstufungen für die Dropdown-Uhrzeitfelder:
 
 - **30 Minuten:** Auswahlmöglichkeiten in 30-Minuten-Schritten (z. B. 08:00, 08:30, 09:00 …)
 - **15 Minuten:** Auswahlmöglichkeiten in 15-Minuten-Schritten (z. B. 08:00, 08:15, 08:30 …)
 
 Bereits eingetragene Werte bleiben beim Wechsel erhalten.
+
+---
+
+## Dienstplan importieren
+
+Mit dem Button **„📋 Dienstplan importieren"** lassen sich Arbeitszeiten direkt aus einem Wochen-Dienstplan im PDF-Format übernehmen – ganz ohne manuelles Abtippen.
+
+**So funktioniert's:**
+
+1. Button klicken und die PDF-Datei des Dienstplans auswählen.
+2. Das Programm liest die komplette Tabelle aus und erkennt **alle Mitarbeiterzeilen** der Woche automatisch.
+3. Ein Auswahlfenster öffnet sich:
+   - **Links:** Liste aller im Dienstplan gefundenen Zeilen (Namen oder „Zeile 1, 2, 3 …", falls kein Name erkannt wurde).
+   - **Rechts:** Vorschau der Arbeitszeiten (früh/spät) für die ausgewählte Zeile, Tag für Tag.
+4. Die passende Zeile auswählen (unabhängig davon, ob der Name im Dienstplan mit dem Profilnamen übereinstimmt) und auf **„✅ Importieren"** klicken.
+5. Die Vormittags- und Nachmittagszeiten werden für die entsprechenden Tage automatisch in die Tabelle übernommen. Std.ges und Ü.Std werden sofort neu berechnet.
+
+**Hinweise:**
+- Tage, die als **Urlaub** markiert waren, werden beim Import automatisch wieder auf „normal" umgeschaltet.
+- Tage, die **außerhalb des aktuell angezeigten Monats** liegen (z. B. wenn die Woche zwei Monate überspannt), werden übersprungen – am Ende erscheint eine Meldung, welche Tage das waren.
+- Voraussetzung ist die Python-Bibliothek `pdfplumber` (`pip install pdfplumber`). Bei fehlender Installation erscheint ein Hinweis.
+- Das PDF muss **echten Text** enthalten (kein gescanntes Bild) – die meisten am Computer erstellten Dienstpläne erfüllen das.
 
 ---
 
@@ -158,7 +181,7 @@ Der Button **„Monat leeren"** (unten rechts, rot) löscht nach einer Sicherhei
 
 ## PDF exportieren
 
-Der Button **„PDF Exportieren…"** (oben rechts, grün) öffnet einen Speicherdialog. Der Dateiname wird automatisch vorgeschlagen (`Arbeitsnachweis_Name_Monat_Jahr.pdf`).
+Der Button **„PDF Exportieren…"** öffnet einen Speicherdialog. Der Dateiname wird automatisch vorgeschlagen (`Arbeitsnachweis_Name_Monat_Jahr.pdf`).
 
 Die exportierte PDF enthält:
 - Titel und Kopfzeile mit Name, Monat und Jahr
@@ -176,7 +199,7 @@ Mit dem Button **„🎨 Ü.Std-Farbe (PDF)"** lässt sich die Textfarbe der Ü.
 
 ## Datenpfad ändern
 
-Über **„📁 Datenpfad ändern"** (oben rechts in Zeile 2) kann der Ordner gewählt werden, in dem die Datendateien gespeichert werden. Beim Wechsel werden die aktuellen Daten zunächst am alten Speicherort gesichert, bevor der neue Pfad aktiv wird.
+Über **„📁 Datenpfad ändern"** (Zeile 2, rechts) kann der Ordner gewählt werden, in dem die Datendateien gespeichert werden. Beim Wechsel werden die aktuellen Daten zunächst am alten Speicherort gesichert, bevor der neue Pfad aktiv wird.
 
 Der gewählte Pfad wird in der Konfigurationsdatei `~/.arbeitsnachweis_config.json` gespeichert und beim nächsten Start automatisch verwendet.
 
