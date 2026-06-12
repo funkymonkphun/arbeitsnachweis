@@ -445,6 +445,10 @@ class TimeTrackingApp(ctk.CTk):
                       fg_color="#64748b", hover_color="#475569", width=160)  \
             .pack(side="right", padx=5)
 
+        ctk.CTkButton(z1, text="📋 Dienstplan importieren", command=self.importiere_dienstplan,
+                      fg_color="#0e7490", hover_color="#155e75", width=180) \
+            .pack(side="right", padx=5)
+
         export_btn = ctk.CTkButton(z1, text="PDF Exportieren...", command=self.export_pdf, fg_color="green", hover_color="darkgreen")
         export_btn.pack(side="right", padx=5)
 
@@ -646,6 +650,8 @@ class TimeTrackingApp(ctk.CTk):
             btn_urlaub.configure(command=lambda t=tag, b=btn_urlaub: self.toggle_urlaub(t, b))
             btn_urlaub.pack(side="left", padx=3)
 
+            d["urlaub_btn"] = btn_urlaub
+
         self._is_loading = False
         self.aktualisiere_alle_berechnungen()
 
@@ -733,6 +739,317 @@ class TimeTrackingApp(ctk.CTk):
         self.lbl_summen.configure(
             text=f"Gesamtsummen | Std.ges: {sum_ges:.2f}  |  D.Plan: {sum_plan:.2f}  |  Ü.Std: {sum_ueber:.2f}".replace(".", ",")
         )
+
+    def importiere_dienstplan(self):
+        """Öffnet ein Dienstplan-PDF und zeigt einen Auswahldialog für alle Mitarbeiterzeilen."""
+        try:
+            import pdfplumber
+        except ImportError:
+            messagebox.showerror(
+                "Fehlende Abhängigkeit",
+                "Für den Dienstplan-Import wird 'pdfplumber' benötigt.\n\n"
+                "Bitte installieren mit:\n  pip install pdfplumber"
+            )
+            return
+
+        filepath = filedialog.askopenfilename(
+            title="Dienstplan-PDF auswählen",
+            filetypes=[("PDF-Dokumente", "*.pdf"), ("Alle Dateien", "*.*")]
+        )
+        if not filepath:
+            return
+
+        try:
+            sektionen, woche_info = self._parse_alle_sektionen(filepath)
+        except Exception as e:
+            messagebox.showerror("Fehler beim Lesen", str(e))
+            return
+
+        if not sektionen:
+            messagebox.showwarning("Keine Daten", "Keine Mitarbeiterzeilen im Dienstplan gefunden.")
+            return
+
+        self._zeige_auswahl_dialog(sektionen, woche_info)
+
+    def _parse_alle_sektionen(self, filepath: str):
+        """
+        Parst ALLE Mitarbeitersektionen aus dem Dienstplan-PDF.
+        Jede Sektion wird durch eine 'früh'-Zeile identifiziert.
+        Rückgabe: (dict {anzeigenam: {iso_datum: zeiten}}, str woche_info)
+        """
+        import pdfplumber
+        import re
+
+        datum_re = re.compile(r'^\d{2}\.\d{2}\.\d{4}$')
+        zeit_re  = re.compile(r'^\d{2}:\d{2}$')
+        SKIP_LOWER = {"stunden"}
+
+        with pdfplumber.open(filepath) as pdf:
+            page = pdf.pages[0]
+            words = page.extract_words(keep_blank_chars=False, use_text_flow=False)
+
+        if not words:
+            raise ValueError("Kein Text aus dem PDF extrahierbar.")
+
+        # ── Tagesspalten anhand der Datumskopfzeile ermitteln ─────────────
+        datum_woerter = sorted(
+            [w for w in words if datum_re.match(w["text"])],
+            key=lambda w: w["x0"]
+        )
+        if not datum_woerter:
+            raise ValueError("Keine Datumsangaben (TT.MM.JJJJ) im Dienstplan gefunden.")
+
+        woche_info = f"{datum_woerter[0]['text']} – {datum_woerter[-1]['text']}"
+
+        spalten = []
+        for i, d in enumerate(datum_woerter):
+            lx = (datum_woerter[i-1]["x1"] + d["x0"]) / 2 if i > 0 else 0.0
+            rx = (d["x1"] + datum_woerter[i+1]["x0"]) / 2 if i < len(datum_woerter)-1 else float("inf")
+            spalten.append({"datum": d["text"], "lx": lx, "rx": rx})
+
+        def datum_fuer_x(x: float):
+            for s in spalten:
+                if s["lx"] <= x < s["rx"]:
+                    return s["datum"]
+            return None
+
+        # Grenze zwischen Beschriftungsspalte (Name, früh, spät, Stunden) und Tagesspalten
+        label_grenze = datum_woerter[0]["x0"] - 1
+
+        # ── Alle 'früh'-Zeilen als Sektionsanker verwenden ────────────────
+        fruh_words = sorted(
+            [w for w in words if w["text"].lower() in ("früh", "fruh") and w["x0"] < label_grenze],
+            key=lambda w: w["top"]
+        )
+        if not fruh_words:
+            raise ValueError("Keine 'früh'-Zeilen im Dienstplan gefunden.")
+
+        tol = 6
+        alle_sektionen = {}
+
+        for i, fruh_w in enumerate(fruh_words):
+            fruh_top = fruh_w["top"]
+            naechste_top = fruh_words[i + 1]["top"] if i + 1 < len(fruh_words) else float("inf")
+
+            # Spät-Zeile in dieser Sektion (zwischen fruh_top und naechste_top)
+            spat_candidates = [
+                w for w in words
+                if fruh_top < w["top"] < naechste_top
+                and w["text"].lower() in ("spät", "spat")
+                and w["x0"] < label_grenze
+            ]
+            spat_y = min(spat_candidates, key=lambda w: w["top"])["top"] if spat_candidates else None
+
+            # Mitarbeitername: letztes qualifiziertes Wort knapp oberhalb von 'früh'
+            kandidaten = [
+                w for w in words
+                if w["top"] < fruh_top - 2
+                and not zeit_re.match(w["text"])
+                and not datum_re.match(w["text"])
+                and w["text"].lower() not in SKIP_LOWER
+                and len(w["text"]) > 1
+                and w["x0"] < fruh_w["x0"] + 50
+            ]
+            emp_name = ""
+            if kandidaten:
+                emp_word = max(kandidaten, key=lambda w: w["top"])
+                # Sicherstellen, dass das Wort zur aktuellen und nicht einer anderen Sektion gehört
+                prev_fruh_top = fruh_words[i - 1]["top"] if i > 0 else 0
+                if emp_word["top"] > prev_fruh_top:
+                    emp_name = emp_word["text"]
+
+            anzeigename = emp_name if emp_name else f"Zeile {i + 1}"
+
+            # Zeiten für diese Sektion parsen
+            sektion_words = [w for w in words if fruh_top - 3 <= w["top"] < naechste_top]
+
+            def zeiten_pro_tag(target_y):
+                if target_y is None:
+                    return {}
+                result = {}
+                for w in sektion_words:
+                    if abs(w["top"] - target_y) <= tol and zeit_re.match(w["text"]):
+                        datum = datum_fuer_x((w["x0"] + w["x1"]) / 2)
+                        if datum:
+                            result.setdefault(datum, []).append(w["text"])
+                return result
+
+            fruh_pro_tag = zeiten_pro_tag(fruh_top)
+            spat_pro_tag = zeiten_pro_tag(spat_y)
+
+            zeiten_dict = {}
+            for datum_str in set(list(fruh_pro_tag) + list(spat_pro_tag)):
+                t = datum_str.split(".")
+                iso = f"{t[2]}-{t[1]}-{t[0]}"
+                eintrag = {}
+                fruh = fruh_pro_tag.get(datum_str, [])
+                spat = spat_pro_tag.get(datum_str, [])
+                if len(fruh) >= 2:
+                    eintrag["v_von"] = fruh[0]
+                    eintrag["v_bis"] = fruh[1]
+                if len(spat) >= 2:
+                    eintrag["n_von"] = spat[0]
+                    eintrag["n_bis"] = spat[1]
+                if eintrag:
+                    zeiten_dict[iso] = eintrag
+
+            # Eindeutigen Schlüssel sicherstellen
+            key = anzeigename
+            counter = 2
+            while key in alle_sektionen:
+                key = f"{anzeigename} ({counter})"
+                counter += 1
+            alle_sektionen[key] = zeiten_dict
+
+        return alle_sektionen, woche_info
+
+    def _zeige_auswahl_dialog(self, sektionen: dict, woche_info: str):
+        """Zeigt einen Dialog mit allen gefundenen Mitarbeiterzeilen zur Auswahl."""
+        dialog = ctk.CTkToplevel(self)
+        dialog.title("Dienstplan importieren – Mitarbeiter auswählen")
+        dialog.geometry("720x480")
+        dialog.transient(self)
+        dialog.grab_set()
+        dialog.resizable(False, False)
+
+        # Kopfzeile
+        ctk.CTkLabel(dialog, text=f"Woche: {woche_info}",
+                     font=("Arial", 13, "bold")).pack(pady=(15, 2), padx=20, anchor="w")
+        ctk.CTkLabel(dialog, text="Wähle die Zeile des gewünschten Mitarbeiters:",
+                     font=("Arial", 11), text_color="gray").pack(padx=20, anchor="w")
+
+        # Hauptbereich
+        haupt = ctk.CTkFrame(dialog, fg_color="transparent")
+        haupt.pack(fill="both", expand=True, padx=15, pady=10)
+
+        # Linke Spalte – Auswahlliste
+        left = ctk.CTkFrame(haupt, width=210)
+        left.pack(side="left", fill="y", padx=(0, 10))
+        left.pack_propagate(False)
+        ctk.CTkLabel(left, text="Gefundene Zeilen:", font=("Arial", 11, "bold")).pack(pady=(10, 4), padx=10, anchor="w")
+        list_frame = ctk.CTkScrollableFrame(left)
+        list_frame.pack(fill="both", expand=True, padx=5, pady=(0, 5))
+
+        # Rechte Spalte – Vorschau
+        right = ctk.CTkFrame(haupt)
+        right.pack(side="right", fill="both", expand=True)
+        ctk.CTkLabel(right, text="Vorschau:", font=("Arial", 11, "bold")).pack(pady=(10, 4), padx=10, anchor="w")
+        vorschau_box = ctk.CTkTextbox(right, font=("Courier", 11), state="disabled")
+        vorschau_box.pack(fill="both", expand=True, padx=5, pady=(0, 5))
+
+        selected_var = tk.StringVar()
+        namen = list(sektionen.keys())
+
+        def zeige_vorschau(name):
+            zeiten = sektionen.get(name, {})
+            if not zeiten:
+                text = "(Keine Zeiten gefunden)"
+            else:
+                lines = []
+                for iso, z in sorted(zeiten.items()):
+                    try:
+                        d = datetime.date.fromisoformat(iso)
+                        tag_str = d.strftime("%a %d.%m.")
+                    except ValueError:
+                        tag_str = iso
+                    teile = []
+                    if "v_von" in z:
+                        teile.append(f"früh  {z['v_von']}–{z['v_bis']}")
+                    if "n_von" in z:
+                        teile.append(f"spät  {z['n_von']}–{z['n_bis']}")
+                    lines.append(f"{tag_str}   {'   |   '.join(teile)}")
+                text = "\n".join(lines)
+            vorschau_box.configure(state="normal")
+            vorschau_box.delete("1.0", "end")
+            vorschau_box.insert("1.0", text)
+            vorschau_box.configure(state="disabled")
+
+        def on_select(name):
+            selected_var.set(name)
+            zeige_vorschau(name)
+
+        # Vorauswahl: Nachname des aktuellen Mitarbeiters
+        vollname = self.name_var.get()
+        nachname = vollname.split()[-1].lower() if vollname else ""
+        vorauswahl = namen[0] if namen else ""
+        for n in namen:
+            if nachname and nachname in n.lower():
+                vorauswahl = n
+                break
+
+        for name in namen:
+            ctk.CTkRadioButton(
+                list_frame, text=name,
+                variable=selected_var, value=name,
+                command=lambda n=name: on_select(n)
+            ).pack(anchor="w", pady=4, padx=5)
+
+        if vorauswahl:
+            selected_var.set(vorauswahl)
+            zeige_vorschau(vorauswahl)
+
+        # Schaltflächen
+        btn_frame = ctk.CTkFrame(dialog, fg_color="transparent")
+        btn_frame.pack(fill="x", padx=15, pady=(0, 15))
+
+        def on_import():
+            name = selected_var.get()
+            if not name or name not in sektionen:
+                messagebox.showwarning("Keine Auswahl", "Bitte zuerst eine Zeile auswählen.", parent=dialog)
+                return
+            zeiten = sektionen[name]
+            if not zeiten:
+                messagebox.showwarning("Keine Zeiten", f"Für '{name}' wurden keine Zeiten gefunden.", parent=dialog)
+                return
+            dialog.destroy()
+            self._fulle_aus_dienstplan(zeiten)
+
+        ctk.CTkButton(btn_frame, text="Abbrechen",
+                      fg_color="#64748b", hover_color="#475569",
+                      command=dialog.destroy).pack(side="right", padx=5)
+        ctk.CTkButton(btn_frame, text="✅ Importieren",
+                      fg_color="green", hover_color="darkgreen",
+                      command=on_import).pack(side="right", padx=5)
+
+    def _fulle_aus_dienstplan(self, parsed: dict):
+        """Trägt die geparsten Zeiten in die aktuelle Monatsansicht ein."""
+        eingetragen = 0
+        nicht_im_monat = []
+
+        for datum_str, zeiten in parsed.items():
+            try:
+                datum = datetime.date.fromisoformat(datum_str)
+            except ValueError:
+                continue
+
+            if datum.month != int(self.monat_var.get()) or datum.year != int(self.jahr_var.get()):
+                nicht_im_monat.append(datum_str)
+                continue
+
+            tag = datum.day
+            if tag not in self.tage_speicher:
+                continue
+
+            d = self.tage_speicher[tag]
+
+            if d["is_urlaub"]:
+                self.toggle_urlaub(tag, d["urlaub_btn"])
+
+            for key in ("v_von", "v_bis", "n_von", "n_bis"):
+                if key in zeiten:
+                    d[key].set(zeiten[key])
+
+            self.berechne_tag(tag, ausloeser="zeit")
+            eingetragen += 1
+
+        meldung = f"✅  {eingetragen} Tag(e) erfolgreich importiert."
+        if nicht_im_monat:
+            meldung += (
+                f"\n\n{len(nicht_im_monat)} Tag(e) liegen nicht im aktuellen Monat "
+                f"({self.monat_var.get()}/{self.jahr_var.get()}) und wurden übersprungen:\n"
+                + ", ".join(nicht_im_monat)
+            )
+        messagebox.showinfo("Import abgeschlossen", meldung)
 
     def aendere_pdf_uestd_farbe(self):
         """Öffnet einen Farbwähler für die Ü.Std-Spalte in der exportierten PDF."""
