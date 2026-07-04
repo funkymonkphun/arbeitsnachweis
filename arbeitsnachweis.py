@@ -483,7 +483,7 @@ class TimeTrackingApp(ctk.CTk):
         ]
         for text, width in headers:
             lbl = ctk.CTkLabel(self.header_frame, text=text, width=width, anchor="center", font=("Arial", 11, "bold"))
-            lbl.pack(side="left", padx=2)
+            lbl.pack(side="left", padx=3)
 
         self.scroll_container = ctk.CTkScrollableFrame(self)
         self.scroll_container.pack(fill="both", expand=True, padx=20, pady=5)
@@ -598,15 +598,19 @@ class TimeTrackingApp(ctk.CTk):
 
             ctk.CTkLabel(row, text=f"{tag:02d}", width=40, font=("Arial", 11, "bold")).pack(side="left", padx=2)
 
-            cb_v_von = ttk.Combobox(row, textvariable=d["v_von"], values=self.zeit_optionen, width=8)
-            cb_v_bis = ttk.Combobox(row, textvariable=d["v_bis"], values=self.zeit_optionen, width=8)
-            cb_n_von = ttk.Combobox(row, textvariable=d["n_von"], values=self.zeit_optionen, width=8)
-            cb_n_bis = ttk.Combobox(row, textvariable=d["n_bis"], values=self.zeit_optionen, width=8)
+            # Feste 95px-Wrapper für Comboboxen – garantiert pixelgenaue Ausrichtung mit Headern
+            def _cb_in_frame(parent, var):
+                frm = tk.Frame(parent, width=95)
+                frm.pack_propagate(False)
+                frm.pack(side="left", padx=3)
+                cb = ttk.Combobox(frm, textvariable=var, values=self.zeit_optionen)
+                cb.pack(fill="both", expand=True)
+                return cb
 
-            cb_v_von.pack(side="left", padx=3)
-            cb_v_bis.pack(side="left", padx=3)
-            cb_n_von.pack(side="left", padx=3)
-            cb_n_bis.pack(side="left", padx=3)
+            cb_v_von = _cb_in_frame(row, d["v_von"])
+            cb_v_bis = _cb_in_frame(row, d["v_bis"])
+            cb_n_von = _cb_in_frame(row, d["n_von"])
+            cb_n_bis = _cb_in_frame(row, d["n_bis"])
 
             cb_v_von.set(d["v_von"].get())
             cb_v_bis.set(d["v_bis"].get())
@@ -708,7 +712,11 @@ class TimeTrackingApp(ctk.CTk):
 
         ueber_std = max(0.0, gesamt_std - plan_std) if gesamt_std > plan_std else 0.0
 
-        d["std_ges"].set(f"{gesamt_std:.2f}".replace(".", ","))
+        # Bei Urlaub (keine Zeiten eingetragen): Std.ges zeigt den Planwert (Tages-Soll)
+        if d["is_urlaub"] and gesamt_std == 0.0:
+            d["std_ges"].set(d["d_plan"].get())
+        else:
+            d["std_ges"].set(f"{gesamt_std:.2f}".replace(".", ","))
         d["u_std"].set(f"{ueber_std:.2f}".replace(".", ","))
 
         self.aktualisiere_gesamtsummen()
