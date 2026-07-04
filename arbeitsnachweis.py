@@ -141,17 +141,35 @@ class TimeTrackingLogic:
 
         for tag_str in sorted(tage_daten.keys(), key=lambda x: int(x)):
             d = tage_daten[tag_str]
-            
+
             v_std = TimeTrackingLogic.parse_stunden(d.get("v_von", ""), d.get("v_bis", ""))
             n_std = TimeTrackingLogic.parse_stunden(d.get("n_von", ""), d.get("n_bis", ""))
-            g = v_std + n_std
-            
+            g_berechnet = v_std + n_std
+
             try:
                 p = float(d.get("d_plan", "0,00").replace(",", "."))
             except ValueError:
                 p = 0.0
-                
-            u = max(0.0, g - p) if g > p else 0.0
+
+            # Bevorzugt den in der UI angezeigten Std.ges-Wert (berücksichtigt z.B. Urlaub).
+            # Fallback auf Neuberechnung nur für ältere JSON-Dateien ohne gespeicherten std_ges-Wert.
+            if "std_ges" in d and d["std_ges"]:
+                try:
+                    g = float(d["std_ges"].replace(",", "."))
+                except ValueError:
+                    g = g_berechnet
+            elif d.get("is_urlaub") and g_berechnet == 0.0:
+                g = p
+            else:
+                g = g_berechnet
+
+            if "u_std" in d and d["u_std"]:
+                try:
+                    u = float(d["u_std"].replace(",", "."))
+                except ValueError:
+                    u = max(0.0, g - p) if g > p else 0.0
+            else:
+                u = max(0.0, g - p) if g > p else 0.0
 
             summe_ges += g
             summe_plan += p
@@ -1148,7 +1166,9 @@ class TimeTrackingApp(ctk.CTk):
                 "v_bis": d["v_bis"].get(),
                 "n_von": d["n_von"].get(),
                 "n_bis": d["n_bis"].get(),
+                "std_ges": d["std_ges"].get(),
                 "d_plan": d["d_plan"].get(),
+                "u_std": d["u_std"].get(),
                 "a": d["a"].get(),
                 "h": d["h"].get(),
                 "bemerkung": d["bemerkung"].get(),
