@@ -178,10 +178,19 @@ class TimeTrackingLogic:
             v_text = f"{d.get('v_von','')}-{d.get('v_bis','')}" if d.get('v_von','') else ""
             n_text = f"{d.get('n_von','')}-{d.get('n_bis','')}" if d.get('n_von','') else ""
 
+            # D.Plan-Null nur ausblenden, wenn der Tag komplett unbenutzt ist
+            # (keine Arbeitszeit, kein Urlaub, keine Bemerkung). Andernfalls wird
+            # eine bewusst eingetragene 0 auch als "0,00" angezeigt.
+            tag_ist_leer = (g == 0.0 and not d.get("bemerkung") and not d.get("is_urlaub"))
+            if p == 0.0:
+                d_plan_text = "" if tag_ist_leer else "0,00"
+            else:
+                d_plan_text = TimeTrackingLogic.format_komma(p)
+
             table_data.append([
                 tag_str, v_text, n_text,
                 TimeTrackingLogic.format_komma(g),
-                TimeTrackingLogic.format_komma(p),
+                d_plan_text,
                 d.get("a", ""), d.get("h", ""),
                 TimeTrackingLogic.format_komma(u),
                 d.get("bemerkung", "")
