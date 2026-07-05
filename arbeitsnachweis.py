@@ -178,12 +178,12 @@ class TimeTrackingLogic:
             v_text = f"{d.get('v_von','')}-{d.get('v_bis','')}" if d.get('v_von','') else ""
             n_text = f"{d.get('n_von','')}-{d.get('n_bis','')}" if d.get('n_von','') else ""
 
-            # D.Plan-Null nur ausblenden, wenn der Tag komplett unbenutzt ist
-            # (keine Arbeitszeit, kein Urlaub, keine Bemerkung). Andernfalls wird
-            # eine bewusst eingetragene 0 auch als "0,00" angezeigt.
-            tag_ist_leer = (g == 0.0 and not d.get("bemerkung") and not d.get("is_urlaub"))
+            # D.Plan-Null nur anzeigen, wenn an dem Tag tatsächlich gearbeitet wurde (Std.ges > 0).
+            # Wurde gar nicht gearbeitet (Feiertag, Wochenende, unbenutzter Tag, Urlaub am
+            # Feiertag ...), bleibt die 0 ausgeblendet – unabhängig von Bemerkung oder Urlaubsstatus.
+            tag_wurde_gearbeitet = (g != 0.0)
             if p == 0.0:
-                d_plan_text = "" if tag_ist_leer else "0,00"
+                d_plan_text = "0,00" if tag_wurde_gearbeitet else ""
             else:
                 d_plan_text = TimeTrackingLogic.format_komma(p)
 
